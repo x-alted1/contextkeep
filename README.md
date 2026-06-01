@@ -1,89 +1,78 @@
 # contextkeep
 
-**A self-hosted, fully-local memory layer you own — so the same personal AI context follows you across Claude, Cursor, ChatGPT, and any other MCP-capable tool, with nothing stored on a vendor's servers.**
+**mem0 gives your app memory. contextkeep gives *you* memory — one Markdown file, every AI tool, your server.**
 
-This is the "own your context" stack: a small Docker deployment of [mem0](https://github.com/mem0ai/mem0) wired to local [Ollama](https://ollama.com) (for fact extraction + embeddings) and [Qdrant](https://qdrant.tech) (for the vector store), exposed over the [Model Context Protocol](https://modelcontextprotocol.io) so every AI client reads and writes the *same* memory. You seed it from a plain-Markdown Master Context File that stays your source of truth.
+A self-hosted memory layer: [mem0](https://github.com/mem0ai/mem0) + local [Ollama](https://ollama.com) + [Qdrant](https://qdrant.tech), exposed over [MCP](https://modelcontextprotocol.io). Same personal context in Cursor, Claude Desktop, Windsurf, and any MCP client — nothing on a vendor's servers by default.
 
-Unlike a hosted memory product, no third party ever sees your context in the default configuration.
+- **`context/context.md`** — Master Context File you edit (source of truth)
+- **`context/inbox.md`** — runtime facts from `add_memory` (merge into `context.md` when ready)
+- **Vector store** — searchable index built from both
+
+See [docs/specs/product-vision.md](docs/specs/product-vision.md) for the full product direction.
+
+---
+
+## Deploy on a server, reference from clients
+
+| Role | What to do |
+|---|---|
+| **Server** (Linux VPS, homelab) | [docs/server-setup.md](docs/server-setup.md) — `make bootstrap`, Tailscale |
+| **Client** (Mac, laptop) | [docs/client-setup.md](docs/client-setup.md) — MCP URL only, no Docker |
 
 ---
 
 ## Architecture
 
 ```
-                 ┌─────────────────────────────────────────────┐
-   Claude Desktop │                   your server               │
-   Cursor / Cline │   ┌──────────────┐                          │
-   Windsurf  ─────┼──▶│ memory (MCP) │── extracts via ──▶ ┌────────────┐
-   (over Tailscale)│  │  FastMCP +   │                    │   ollama   │
-                 │   │    mem0      │── embeds via ─────▶ │ (local LLM │
-                 │   └──────┬───────┘                    │ + embedder)│
-                 │          │ stores vectors             └────────────┘
-                 │          ▼                                   │
-                 │   ┌────────────┐         (optional)   ┌────────────┐
-                 │   │   qdrant   │                       │   neo4j    │
-                 │   │ (vectors)  │                       │  (graph)   │
-                 │   └────────────┘                       └────────────┘
-                 └─────────────────────────────────────────────┘
-   seed source: ./context/context.md  (your Master Context File)
+   Cursor / Claude / Windsurf
+            │
+            │  MCP over Tailscale
+            ▼
+   ┌────────────────────────────────────────┐
+   │  your server: memory (FastMCP + mem0)  │
+   │         │                    │         │
+   │         ▼                    ▼         │
+   │  context/context.md   context/inbox.md │
+   │  (you edit)            (auto append)   │
+   │         │                    │         │
+   │         └────────┬───────────┘         │
+   │                  ▼                     │
+   │            qdrant + ollama             │
+   └────────────────────────────────────────┘
 ```
 
-The MCP port binds to `127.0.0.1` on the host and is published privately to your devices over Tailscale — never the open internet.
+The MCP port binds to `127.0.0.1` on the host; expose privately via Tailscale ([docs/tailscale.md](docs/tailscale.md)).
 
 ---
 
-## Requirements
-
-- A Linux server (mini PC, NAS, old laptop, or VPS). For the default `llama3.1:8b` extractor, budget **~8 GB RAM**; on smaller boxes set `MEM0_LLM_MODEL=llama3.2:3b` in `.env`. A GPU helps but isn't required.
-- **Docker** + **Docker Compose v2**.
-- **Tailscale** (recommended) for private multi-device/mobile access.
-- **Node.js** on client machines only if you use the `mcp-remote` bridge.
-
----
-
-## Quick start
+## Quick start (server)
 
 ```bash
-# 1. Clone and configure
-git clone <your-fork-url> contextkeep && cd contextkeep
+git clone https://github.com/x-alted1/contextkeep.git && cd contextkeep
 cp .env.example .env
-# (edit .env if you want a smaller model or a different user id)
-
-# 2. Edit your context — this is your source of truth
 $EDITOR context/context.md
 
-# 3. Start the stack
-make up
-
-# 4. Pull the local models into Ollama (one-time, can take a few minutes)
-make pull-models
-
-# 5. Seed your context into memory
-make seed
-
-# 6. Verify
-make list          # should print consolidated memories
-./scripts/healthcheck.sh
-```
-
-Then expose it privately and wire up a client:
-
-```bash
-# expose to your tailnet (see docs/tailscale.md)
+make bootstrap
 sudo tailscale serve --bg 8080
 ```
 
-Point a client at `http://<your-tailscale-name>:8080/mcp` — see [`clients/`](clients/README.md) for Claude Desktop and Cursor configs, and the one-paragraph rule that makes the model actually call `search_memory`/`add_memory`.
+Then wire clients to `http://<server-hostname>:8080/mcp` — [docs/client-setup.md](docs/client-setup.md).
+
+Copy the Cursor rule so models actually call memory tools:
+
+```bash
+cp .cursor/rules/contextkeep-memory.mdc ~/.cursor/rules/
+```
 
 ---
 
 ## How it works day to day
 
-1. **At session start**, your client calls `search_memory` and loads what's already known about you.
-2. **As you work**, the model calls `add_memory` when it learns something durable. mem0 runs the local LLM to extract, de-duplicate, and consolidate — you don't get raw transcript dumps, you get clean facts.
-3. **Your Markdown file stays canonical.** Re-run `make seed` after editing it. The vector store is a queryable cache built from (and added to beyond) that file.
+1. **Session start** — clients call `search_memory` to load what is already known.
+2. **While working** — `add_memory` stores durable facts in Qdrant **and** appends to `inbox.md`.
+3. **You stay canonical** — merge inbox into `context.md`, then `make sync` to re-index.
 
-Because the interface is MCP, the *same* memory serves every compatible tool. Switch from Claude to Cursor mid-project and the context is already there.
+The same memory serves every MCP tool. Switch from Claude to Cursor and context is already there.
 
 ---
 
@@ -92,24 +81,25 @@ Because the interface is MCP, the *same* memory serves every compatible tool. Sw
 | Path | Purpose |
 |---|---|
 | `docker-compose.yml` | qdrant + ollama + memory (+ optional neo4j `graph` profile) |
-| `memory-server/` | FastMCP server (`server.py`), mem0 wrapper (`memory_layer.py`), seeder (`seed.py`) |
-| `context/context.md` | Master Context File template — **edit this** |
-| `clients/` | Claude Desktop / Cursor MCP configs + wiring guide |
-| `scripts/` | model pull + healthcheck helpers |
-| `docs/tailscale.md` | private remote access |
-| `docs/security.md` | threat model, backups, the "is it really local?" answer |
-| `Makefile` | `up`, `pull-models`, `seed`, `list`, `logs`, `status`, `nuke` |
+| `memory-server/` | MCP server, mem0 wrapper, seed/sync, inbox writer |
+| `context/context.md` | Master Context File — **edit this** |
+| `context/inbox.md` | Runtime memory inbox — review & merge |
+| `.cursor/rules/` | Cursor rule to invoke memory tools |
+| `clients/` | MCP config templates |
+| `docs/server-setup.md` | Install on a server |
+| `docs/client-setup.md` | Reference from laptops |
+| `docs/specs/product-vision.md` | Product thesis |
+| `Makefile` | `bootstrap`, `sync`, `seed`, `healthcheck`, … |
 
 ---
 
-## Honest caveats — read before trusting this
+## Honest caveats
 
-- **It's a scaffold, not an audited product.** It runs as designed, but review the code and pin versions before relying on it for anything important.
-- **Version drift is the main risk.** mem0's config schema and return shapes, and the MCP Python SDK's FastMCP API (transport names, host/port kwargs, mount path), change between releases. If something errors after `pip` resolves newer versions, check the inline `NOTE ON VERSIONS` comments in `memory_layer.py` and `server.py` against current upstream docs.
-- **No built-in auth.** Security depends on the loopback bind + Tailscale (or a reverse proxy you add). Don't publish port 8080 publicly. See `docs/security.md`.
-- **"Fully local" depends on your model choice.** Default = local Ollama, nothing leaves the host. Point the model env vars at a cloud API and your memories transit that API during extraction.
-- **Seeding is LLM-bound.** Each line in `context.md` triggers a local extraction call, so the first `make seed` on a CPU-only box can be slow. That's expected.
-- **The discipline is still yours.** This automates storage and injection; it does not maintain the accuracy of `context.md` for you. Keep that file current — it's the part that actually makes the system work.
+- **Scaffold, not audited product** — review before trusting with sensitive data.
+- **Dependencies pinned** — bump intentionally; re-run `make bootstrap` after upgrades.
+- **No built-in MCP auth** — use Tailscale or a reverse proxy; see [docs/security.md](docs/security.md).
+- **Seeding is LLM-bound** — first `make bootstrap` can take a while on CPU-only hardware.
+- **`delete_all_memories`** requires `confirm=True` (or `CONFIRM_DELETE=1` in `.env`).
 
 ---
 
@@ -117,4 +107,4 @@ Because the interface is MCP, the *same* memory serves every compatible tool. Sw
 
 MIT — see [LICENSE](LICENSE).
 
-Built on the open-source [mem0](https://github.com/mem0ai/mem0), [Qdrant](https://github.com/qdrant/qdrant), [Ollama](https://github.com/ollama/ollama), and the [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk). Not affiliated with any of them.
+Built on [mem0](https://github.com/mem0ai/mem0), [Qdrant](https://github.com/qdrant/qdrant), [Ollama](https://github.com/ollama/ollama), and the [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk). Not affiliated with any of them.

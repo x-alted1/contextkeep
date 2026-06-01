@@ -1,0 +1,27 @@
+---
+description: Use contextkeep MCP memory at session start and when learning durable facts
+alwaysApply: true
+---
+
+# contextkeep memory
+
+You have access to the **contextkeep** MCP server (`search_memory`, `add_memory`, `list_memories`, `delete_memory`).
+
+## At session start
+
+Before asking the user to repeat context, call `search_memory` with a query that covers:
+- who they are and how they like to work
+- active projects and constraints
+- preferences from prior sessions
+
+Use the results as ground truth for this conversation.
+
+## While working
+
+When you learn something **durable** (identity, preferences, long-running projects, key people, standing instructions), call `add_memory` with a short factual sentence.
+
+Do **not** store secrets, credentials, health, or financial data.
+
+## Canonical source
+
+The user's Master Context File (`context.md`) is canonical. Runtime facts land in `inbox.md` on the server for them to merge later. Prefer facts that would belong in a personal README.

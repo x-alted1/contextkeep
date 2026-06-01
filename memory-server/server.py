@@ -32,6 +32,7 @@ mcp = FastMCP("contextkeep", host=HOST, port=PORT)
 @mcp.tool()
 def add_memory(text: str, user_id: str = DEFAULT_USER) -> str:
     """Store a new long-term fact, preference, or standing instruction about the user.
+    Also appends to context/inbox.md for later merge into context.md.
     Use when you learn something durable (identity, preferences, projects, people, decisions)."""
     return ml.add(text, user_id=user_id)
 
@@ -45,14 +46,20 @@ def search_memory(query: str, user_id: str = DEFAULT_USER, limit: int = 5) -> li
 
 @mcp.tool()
 def list_memories(user_id: str = DEFAULT_USER) -> list[str]:
-    """Return every memory currently stored for the user."""
-    return ml.get_all(user_id=user_id)
+    """Return every memory currently stored for the user (includes ids when available)."""
+    return ml.list_with_ids(user_id=user_id)
 
 
 @mcp.tool()
-def delete_all_memories(user_id: str = DEFAULT_USER) -> str:
-    """Permanently delete ALL stored memories for the user. Irreversible."""
-    return ml.delete_all(user_id=user_id)
+def delete_memory(memory_id: str, user_id: str = DEFAULT_USER) -> str:
+    """Delete a single memory by id (from list_memories)."""
+    return ml.delete_one(memory_id, user_id=user_id)
+
+
+@mcp.tool()
+def delete_all_memories(user_id: str = DEFAULT_USER, confirm: bool = False) -> str:
+    """Permanently delete ALL stored memories for the user. Requires confirm=True."""
+    return ml.delete_all(user_id=user_id, confirm=confirm)
 
 
 if __name__ == "__main__":

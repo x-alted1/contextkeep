@@ -1,35 +1,45 @@
 # Wiring clients to contextkeep
 
-Your server exposes an MCP endpoint at:
+Install the stack on a **server** ([docs/server-setup.md](../docs/server-setup.md)). Clients only need the MCP URL ([docs/client-setup.md](../docs/client-setup.md)).
+
+Your server exposes:
 
     http://<host>:8080/mcp        (streamable-http)
 
-where `<host>` is your Tailscale MagicDNS name or tailnet IP (recommended),
-or `127.0.0.1` if the client runs on the same machine as the server.
+where `<host>` is your Tailscale MagicDNS name, or `127.0.0.1` if the client is on the same machine.
 
-## Two connection styles
+## Connection styles
 
-1. **Native remote MCP (URL).** Clients that support remote MCP servers
-   (recent Cursor, Windsurf, Cline, and Claude Desktop on supporting plans)
-   take the URL directly. See `cursor-mcp.json`.
-
-2. **stdio bridge (`mcp-remote`).** For clients that only speak stdio MCP,
-   use the `npx -y mcp-remote <url>` shim. See `claude_desktop_config.json`.
-   Requires Node.js on the client machine.
+1. **Native remote MCP (URL)** — recent Cursor, Windsurf, Cline. See `cursor-mcp.json`.
+2. **stdio bridge (`mcp-remote`)** — Claude Desktop fallback. See `claude_desktop_config.json`. Requires Node.js on the client.
 
 ## Make the model actually USE it
 
-Add a rule like this to the client's system/rules surface
-(e.g. Claude Desktop project instructions, Cursor Rules, or ~/.claude/CLAUDE.md):
+**Cursor:** copy the shipped rule:
 
-    At the start of each session, call `search_memory` for relevant context
+```bash
+cp ../.cursor/rules/contextkeep-memory.mdc ~/.cursor/rules/
+```
+
+**Claude / others:** add to project instructions:
+
+    At the start of each session, call search_memory for relevant context
     before asking me to re-explain anything. Whenever you learn a durable
-    fact about me, my preferences, my projects, or people I work with, call
-    `add_memory` to store it. Refer to this as your "memory".
+    fact about me, call add_memory to store it.
 
-## Verify it's reachable
+## Verify reachability
 
-    curl -i http://<host>:8080/mcp
-    # An MCP endpoint will respond (often 400/406 to a bare GET) — that's
-    # enough to confirm the port is open and serving. Use a real MCP client
-    # for actual tool calls.
+```bash
+curl -i http://<host>:8080/mcp
+# HTTP 4xx is fine — the endpoint is up
+```
+
+## Memory workflow
+
+| File | Role |
+|---|---|
+| `context/context.md` (server) | You edit — canonical |
+| `context/inbox.md` (server) | Auto — review & merge into context.md |
+| Client MCP config | URL only — no local Docker |
+
+After merging inbox → `context.md`, run `make sync` on the server.

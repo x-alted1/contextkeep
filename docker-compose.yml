@@ -2,20 +2,32 @@ name: contextkeep
 
 services:
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:v1.13.6
     restart: unless-stopped
     expose:
       - "6333"
     volumes:
       - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.6.8
     restart: unless-stopped
     expose:
       - "11434"
     volumes:
       - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     # GPU: uncomment if you have NVIDIA + nvidia-container-toolkit installed.
     # deploy:
     #   resources:
@@ -30,20 +42,28 @@ services:
     restart: unless-stopped
     env_file: .env
     depends_on:
-      - qdrant
-      - ollama
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
     # Bind to LOOPBACK only. Do NOT publish to 0.0.0.0.
     # Reach it from other devices via Tailscale (see docs/tailscale.md).
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - ./context:/context:ro
+      - ./context:/context
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # OPTIONAL graph memory (entity/relationship recall).
   # Start with:  docker compose --profile graph up -d
   # Then set NEO4J_URL=bolt://neo4j:7687 in .env
   neo4j:
-    image: neo4j:5
+    image: neo4j:5.26.0
     profiles: ["graph"]
     restart: unless-stopped
     environment:

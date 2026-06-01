@@ -17,29 +17,21 @@ or via the Makefile:
 import os
 
 import memory_layer as ml
+from chunking import chunk_markdown
 
 USER = os.environ.get("CONTEXT_USER_ID", "me")
 PATH = os.environ.get("CONTEXT_FILE", "/context/context.md")
-
-SKIP_PREFIXES = ("#", "---", "```", "|", ">")
-
-
-def chunk_markdown(md: str) -> list[str]:
-    chunks: list[str] = []
-    for raw in md.splitlines():
-        s = raw.strip()
-        if not s or s.startswith(SKIP_PREFIXES):
-            continue
-        s = s.lstrip("-*").strip()
-        # keep substantive lines only
-        if len(s) >= 8:
-            chunks.append(s)
-    return chunks
 
 
 def main() -> None:
     if not os.path.exists(PATH):
         raise SystemExit(f"Context file not found at {PATH}. Mount it or set CONTEXT_FILE.")
+
+    try:
+        ml.ensure_ready()
+    except (RuntimeError, ValueError) as e:
+        raise SystemExit(str(e)) from e
+
     with open(PATH, encoding="utf-8") as f:
         md = f.read()
 
@@ -49,7 +41,7 @@ def main() -> None:
 
     for i, c in enumerate(chunks, 1):
         try:
-            ml.add(c, user_id=USER)
+            ml.add(c, user_id=USER, record_inbox=False)
             print(f"  [{i}/{len(chunks)}] ok: {c[:70]}")
         except Exception as e:  # noqa: BLE001 - we want to keep going on a single failure
             print(f"  [{i}/{len(chunks)}] FAILED: {e}")

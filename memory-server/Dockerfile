@@ -6,12 +6,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY memory_layer.py server.py seed.py ./
+COPY memory_layer.py server.py seed.py sync.py context_io.py chunking.py healthcheck.py ./
 
 EXPOSE 8080
 
-# Healthcheck hits the MCP HTTP mount; adjust path if you change transport.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
-  CMD python -c "import socket,os; s=socket.socket(); s.settimeout(3); s.connect(('127.0.0.1', int(os.environ.get('MCP_PORT','8080')))); s.close()" || exit 1
+# Any HTTP response from /mcp (including 4xx) means the MCP server is listening.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
+  CMD ["python", "healthcheck.py"]
 
 CMD ["python", "server.py"]
