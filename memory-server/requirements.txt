@@ -1,0 +1,6 @@
+# Pinned loosely; bump and re-test if upstream APIs change.
+# Verify current releases: https://pypi.org/project/mem0ai / https://pypi.org/project/mcp
+mem0ai>=0.1.40
+mcp>=1.4.0
+qdrant-client>=1.9.0
+ollama>=0.3.0

@@ -1,0 +1,9 @@
+{
+  "//": "Claude Desktop. If your version/plan supports remote MCP directly, add the URL as a Custom Connector in Settings instead. Otherwise this stdio<->HTTP bridge works everywhere.",
+  "mcpServers": {
+    "contextkeep": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://YOUR-TAILSCALE-HOSTNAME:8080/mcp"]
+    }
+  }
+}

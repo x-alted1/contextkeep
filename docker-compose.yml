@@ -1,0 +1,59 @@
+name: contextkeep
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    expose:
+      - "6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    expose:
+      - "11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # GPU: uncomment if you have NVIDIA + nvidia-container-toolkit installed.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  memory:
+    build: ./memory-server
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      - qdrant
+      - ollama
+    # Bind to LOOPBACK only. Do NOT publish to 0.0.0.0.
+    # Reach it from other devices via Tailscale (see docs/tailscale.md).
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./context:/context:ro
+
+  # OPTIONAL graph memory (entity/relationship recall).
+  # Start with:  docker compose --profile graph up -d
+  # Then set NEO4J_URL=bolt://neo4j:7687 in .env
+  neo4j:
+    image: neo4j:5
+    profiles: ["graph"]
+    restart: unless-stopped
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-contextkeep}
+    expose:
+      - "7687"
+    volumes:
+      - neo4j_data:/data
+
+volumes:
+  qdrant_data:
+  ollama_data:
+  neo4j_data:

@@ -1,0 +1,8 @@
+{
+  "//": "Cursor: place at ~/.cursor/mcp.json (global) or .cursor/mcp.json (per-project).",
+  "mcpServers": {
+    "contextkeep": {
+      "url": "http://YOUR-TAILSCALE-HOSTNAME:8080/mcp"
+    }
+  }
+}
